@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, SafeAreaView, ScrollView, Dimensions,
 } from 'react-native';
@@ -9,7 +9,6 @@ import Animated, {
   useAnimatedProps,
   withTiming,
   Easing,
-  runOnJS,
 } from 'react-native-reanimated';
 import { useAurora } from '../context/AuroraContext';
 import { UI_COLORS } from '../constants/colors';
@@ -21,7 +20,6 @@ const DIAL_SIZE = Math.min(SCREEN_W - 80, 200);
 const DIAL_STROKE = 14;
 const DIAL_RADIUS = (DIAL_SIZE - DIAL_STROKE) / 2;
 const DIAL_CIRCUMFERENCE = 2 * Math.PI * DIAL_RADIUS;
-
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function startOfDay(d) {
@@ -29,13 +27,11 @@ function startOfDay(d) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
-
 function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return startOfDay(d);
 }
-
 function inLast7Days(dateLike) {
   if (!dateLike) return false;
   const d = startOfDay(new Date(dateLike));
@@ -43,68 +39,61 @@ function inLast7Days(dateLike) {
   const to = startOfDay(new Date());
   return d >= from && d <= to;
 }
-
 function gradeFromFocus(focusRatio) {
   if (focusRatio >= 0.75) return { label: 'Clear Skies', emoji: '🌌', color: '#00d4aa' };
   if (focusRatio >= 0.55) return { label: 'Steady Glow', emoji: '🍃', color: '#7b2ff7' };
   if (focusRatio >= 0.35) return { label: 'Mixed Lights', emoji: '🌤', color: '#ffaa00' };
   return { label: 'Storm Watch', emoji: '⚡', color: '#ff3366' };
 }
-
 function formatMins(mins) {
-  if (!mins || mins <= 0) return '0m';
-  if (mins < 1) return `${Math.round(mins * 60)}s`;
-  if (mins < 60) return `${Math.round(mins)}m`;
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
+  const n = Number(mins) || 0;
+  if (n <= 0) return '0m';
+  if (n < 1) return `${Math.round(n * 60)}s`;
+  if (n < 60) return `${Math.round(n)}m`;
+  const h = Math.floor(n / 60);
+  const m = Math.round(n % 60);
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-// ── Apple Fitness-style animated Focus Dial ─────────────────
 function FocusDial({ ratio, color, active }) {
   const progress = Math.min(Math.max(ratio || 0, 0), 1);
   const animatedProgress = useSharedValue(0);
-  const [displayPct, setDisplayPct] = React.useState(0);
+  const [displayPct, setDisplayPct] = useState(0);
 
   useEffect(() => {
-    if (active) {
-      // reset then animate up like Apple Fitness rings
+    if (!active) {
       animatedProgress.value = 0;
       setDisplayPct(0);
-      animatedProgress.value = withTiming(progress, {
-        duration: 1400,
-        easing: Easing.out(Easing.cubic),
-      });
-
-      // count-up number
-      const target = Math.round(progress * 100);
-      const steps = 28;
-      let i = 0;
-      const timer = setInterval(() => {
-        i += 1;
-        const next = Math.round((target * i) / steps);
-        setDisplayPct(Math.min(next, target));
-        if (i >= steps) clearInterval(timer);
-      }, 1400 / steps);
-
-      return () => clearInterval(timer);
-    } else {
-      animatedProgress.value = 0;
-      setDisplayPct(0);
+      return;
     }
+
+    animatedProgress.value = 0;
+    setDisplayPct(0);
+
+    animatedProgress.value = withTiming(progress, {
+      duration: 1400,
+      easing: Easing.out(Easing.cubic),
+    });
+
+    const target = Math.round(progress * 100);
+    const steps = 28;
+    let i = 0;
+    const timer = setInterval(() => {
+      i += 1;
+      setDisplayPct(Math.min(Math.round((target * i) / steps), target));
+      if (i >= steps) clearInterval(timer);
+    }, 1400 / steps);
+
+    return () => clearInterval(timer);
   }, [active, progress]);
 
-  const animatedProps = useAnimatedProps(() => {
-    const p = animatedProgress.value;
-    return {
-      strokeDashoffset: DIAL_CIRCUMFERENCE * (1 - p),
-    };
-  });
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: DIAL_CIRCUMFERENCE * (1 - animatedProgress.value),
+  }));
 
   return (
     <View style={styles.dialWrap}>
       <Svg width={DIAL_SIZE} height={DIAL_SIZE}>
-        {/* Track */}
         <Circle
           cx={DIAL_SIZE / 2}
           cy={DIAL_SIZE / 2}
@@ -113,7 +102,6 @@ function FocusDial({ ratio, color, active }) {
           strokeWidth={DIAL_STROKE}
           fill="none"
         />
-        {/* Animated progress arc */}
         <AnimatedCircle
           cx={DIAL_SIZE / 2}
           cy={DIAL_SIZE / 2}
@@ -130,15 +118,14 @@ function FocusDial({ ratio, color, active }) {
       </Svg>
       <View style={styles.dialCenter}>
         <Text style={[styles.dialPct, { color }]}>{displayPct}%</Text>
-        <Text style={styles.dialLabel}>FOCUSED</Text>
+        <Text style={styles.dialLabel}>OF PLAN</Text>
       </View>
     </View>
   );
 }
 
-// ── 7-Day Bar Chart ──────────────────────────────────────────
 function WeekBarChart({ dailyData }) {
-  const maxVal = Math.max(...dailyData.map((d) => d.focus + d.distract), 1);
+  const maxVal = Math.max(...dailyData.map((d) => Math.max(d.planned, d.focus + d.distract)), 1);
   const chartW = SCREEN_W - 64;
   const chartH = 110;
   const barGap = 8;
@@ -151,11 +138,23 @@ function WeekBarChart({ dailyData }) {
           const x = i * (barW + barGap);
           const focusH = (day.focus / maxVal) * chartH;
           const distractH = (day.distract / maxVal) * chartH;
+          const plannedH = (day.planned / maxVal) * chartH;
           const totalH = focusH + distractH;
           const baseY = chartH;
 
           return (
             <G key={i}>
+              {/* Planned outline bar (background target) */}
+              {plannedH > 0 && (
+                <Rect
+                  x={x}
+                  y={baseY - plannedH}
+                  width={barW}
+                  height={Math.max(plannedH, 2)}
+                  rx={4}
+                  fill="rgba(255,255,255,0.08)"
+                />
+              )}
               {distractH > 0 && (
                 <Rect
                   x={x}
@@ -163,7 +162,7 @@ function WeekBarChart({ dailyData }) {
                   width={barW}
                   height={Math.max(distractH, 2)}
                   rx={4}
-                  fill="rgba(255,170,0,0.7)"
+                  fill="rgba(255,170,0,0.75)"
                 />
               )}
               {focusH > 0 && (
@@ -176,15 +175,8 @@ function WeekBarChart({ dailyData }) {
                   fill="#00d4aa"
                 />
               )}
-              {totalH === 0 && (
-                <Rect
-                  x={x}
-                  y={baseY - 4}
-                  width={barW}
-                  height={4}
-                  rx={2}
-                  fill="rgba(255,255,255,0.08)"
-                />
+              {totalH === 0 && plannedH === 0 && (
+                <Rect x={x} y={baseY - 4} width={barW} height={4} rx={2} fill="rgba(255,255,255,0.08)" />
               )}
               <SvgText
                 x={x + barW / 2}
@@ -203,12 +195,16 @@ function WeekBarChart({ dailyData }) {
 
       <View style={styles.legendRow}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#00d4aa' }]} />
-          <Text style={styles.legendText}>Focus</Text>
+          <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.25)' }]} />
+          <Text style={styles.legendText}>Planned</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: 'rgba(255,170,0,0.7)' }]} />
-          <Text style={styles.legendText}>Distraction</Text>
+          <View style={[styles.legendDot, { backgroundColor: '#00d4aa' }]} />
+          <Text style={styles.legendText}>Focused</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: 'rgba(255,170,0,0.75)' }]} />
+          <Text style={styles.legendText}>Distracted</Text>
         </View>
       </View>
     </View>
@@ -226,23 +222,50 @@ export default function WeeklyReportModal({ visible, onClose }) {
   } = useAurora();
 
   const report = useMemo(() => {
-    const sessions = (focusSessions || []).filter((s) => inLast7Days(s.date));
+    const sessions = (Array.isArray(focusSessions) ? focusSessions : []).filter((s) => inLast7Days(s?.date));
 
     let focusMins = 0;
     let distractMins = 0;
+    let plannedMins = 0;
 
     sessions.forEach((s) => {
-      focusMins += s.actualFocusMins || 0;
-      distractMins += s.distractionMins || 0;
+      const focused = Number(s.actualFocusMins) || 0;
+      const distracted = Number(s.distractionMins) || 0;
+      const target = Number(s.targetMinutes) || 0;
+      const elapsedMins = (Number(s.elapsedSeconds) || 0) / 60;
+
+      // Planned time:
+      // - Target mode: use targetMinutes
+      // - Open mode: use elapsed or focused+distracted
+      const planned = target > 0
+        ? target
+        : Math.max(elapsedMins, focused + distracted, 0);
+
+      focusMins += focused;
+      distractMins += distracted;
+      plannedMins += planned;
     });
 
-    const totalTracked = focusMins + distractMins;
-    const focusRatio = totalTracked > 0 ? focusMins / totalTracked : 0;
+    // TRUE completion against plan
+    // Focus % = focused / planned
+    const focusRatio = plannedMins > 0
+      ? Math.min(focusMins / plannedMins, 1)
+      : 0;
 
+    // distraction share of plan
+    const distractRatio = plannedMins > 0
+      ? Math.min(distractMins / plannedMins, 1)
+      : 0;
+
+    // completion quality (focused vs distracted inside actual work)
+    const worked = focusMins + distractMins;
+    const honestyRatio = worked > 0 ? focusMins / worked : 0;
+
+    // distraction breakdown
     const distractionMap = {};
     sessions.forEach((s) => {
       const key = s.mainDistraction || 'other';
-      distractionMap[key] = (distractionMap[key] || 0) + (s.distractionMins || 0);
+      distractionMap[key] = (distractionMap[key] || 0) + (Number(s.distractionMins) || 0);
     });
 
     let topDistraction = null;
@@ -259,6 +282,7 @@ export default function WeeklyReportModal({ visible, onClose }) {
       other: 'Other',
     };
 
+    // Daily breakdown
     const dailyData = [];
     for (let i = 6; i >= 0; i--) {
       const dayStart = daysAgo(i);
@@ -267,12 +291,20 @@ export default function WeeklyReportModal({ visible, onClose }) {
 
       let dayFocus = 0;
       let dayDistract = 0;
+      let dayPlanned = 0;
 
       sessions.forEach((s) => {
         const sd = new Date(s.date);
         if (sd >= dayStart && sd <= dayEnd) {
-          dayFocus += s.actualFocusMins || 0;
-          dayDistract += s.distractionMins || 0;
+          const focused = Number(s.actualFocusMins) || 0;
+          const distracted = Number(s.distractionMins) || 0;
+          const target = Number(s.targetMinutes) || 0;
+          const elapsedMins = (Number(s.elapsedSeconds) || 0) / 60;
+          const planned = target > 0 ? target : Math.max(elapsedMins, focused + distracted, 0);
+
+          dayFocus += focused;
+          dayDistract += distracted;
+          dayPlanned += planned;
         }
       });
 
@@ -280,27 +312,28 @@ export default function WeeklyReportModal({ visible, onClose }) {
         label: DAY_LABELS[dayStart.getDay()],
         focus: dayFocus,
         distract: dayDistract,
+        planned: dayPlanned,
         isToday: i === 0,
       });
     }
 
-    const createdThisWeek = (tasks || []).filter((t) => inLast7Days(t.createdAt));
-    const completedCount = (tasks || []).filter((t) => t.completed).length;
-    const activeCount = (tasks || []).filter((t) => !t.completed).length;
-    const anxiousActive = (tasks || []).filter((t) => !t.completed && t.feeling === 'anxious').length;
+    const createdThisWeek = (Array.isArray(tasks) ? tasks : []).filter((t) => inLast7Days(t?.createdAt));
+    const completedCount = (Array.isArray(tasks) ? tasks : []).filter((t) => t?.completed).length;
+    const activeCount = (Array.isArray(tasks) ? tasks : []).filter((t) => t && !t.completed).length;
+    const anxiousActive = (Array.isArray(tasks) ? tasks : []).filter((t) => t && !t.completed && t.feeling === 'anxious').length;
 
     const grade = gradeFromFocus(focusRatio);
     const sessionCount = sessions.length;
 
     let insight = 'Log a few focus sessions this week to unlock deeper insights.';
     if (sessionCount > 0 && focusRatio >= 0.7) {
-      insight = 'You protected deep focus this week. Your sky has reasons to stay calm.';
-    } else if (sessionCount > 0 && focusRatio >= 0.45) {
-      insight = 'Balanced week — real work happened, with some drift. Tiny guardrails will help.';
+      insight = 'You completed most of your planned study time. Strong execution this week.';
+    } else if (sessionCount > 0 && focusRatio >= 0.4) {
+      insight = 'You showed up, but planned blocks were only partly completed. Tighten start friction.';
     } else if (sessionCount > 0) {
-      insight = 'Distraction pulled hard this week. One honest 25-min block tomorrow can reset the sky.';
+      insight = 'Planned study time was much higher than actual focused minutes. Start smaller blocks.';
     } else if (anxiousActive > 0) {
-      insight = 'You have anxious deadlines active. A short focus block can lower the gravity.';
+      insight = 'You have anxious deadlines active. A short honest block can lower gravity.';
     } else if (activeCount === 0) {
       insight = 'Clear workload right now. Keep a light streak going while the sky is calm.';
     }
@@ -309,8 +342,10 @@ export default function WeeklyReportModal({ visible, onClose }) {
       sessionCount,
       focusMins,
       distractMins,
-      totalTracked,
+      plannedMins,
       focusRatio,
+      distractRatio,
+      honestyRatio,
       topDistraction: topDistraction ? distractionLabels[topDistraction] || topDistraction : '—',
       topDistractionMins: topDistraction ? distractionMap[topDistraction] : 0,
       createdCount: createdThisWeek.length,
@@ -357,19 +392,30 @@ export default function WeeklyReportModal({ visible, onClose }) {
               <Text style={styles.heroInsight}>{report.insight}</Text>
             </LinearGradient>
 
-            <Text style={styles.sectionHeader}>FOCUS RATIO</Text>
+            <Text style={styles.sectionHeader}>PLAN COMPLETION</Text>
             <View style={styles.dialCard}>
               <FocusDial
                 ratio={report.focusRatio}
                 color={report.grade.color}
                 active={visible}
               />
+              <Text style={styles.formulaText}>
+                Focused ÷ Planned Target Time
+              </Text>
+
               <View style={styles.dialStats}>
+                <View style={styles.dialStatItem}>
+                  <Text style={[styles.dialStatVal, { color: '#fff' }]}>
+                    {formatMins(report.plannedMins)}
+                  </Text>
+                  <Text style={styles.dialStatLbl}>Planned</Text>
+                </View>
+                <View style={styles.dialStatDivider} />
                 <View style={styles.dialStatItem}>
                   <Text style={[styles.dialStatVal, { color: '#00d4aa' }]}>
                     {formatMins(report.focusMins)}
                   </Text>
-                  <Text style={styles.dialStatLbl}>Real Focus</Text>
+                  <Text style={styles.dialStatLbl}>Focused</Text>
                 </View>
                 <View style={styles.dialStatDivider} />
                 <View style={styles.dialStatItem}>
@@ -378,12 +424,17 @@ export default function WeeklyReportModal({ visible, onClose }) {
                   </Text>
                   <Text style={styles.dialStatLbl}>Distracted</Text>
                 </View>
-                <View style={styles.dialStatDivider} />
-                <View style={styles.dialStatItem}>
-                  <Text style={styles.dialStatVal}>{report.sessionCount}</Text>
-                  <Text style={styles.dialStatLbl}>Sessions</Text>
-                </View>
               </View>
+            </View>
+
+            <View style={styles.wideCard}>
+              <Text style={styles.wideLabel}>ATTENTION QUALITY (WHILE WORKING)</Text>
+              <Text style={styles.wideValue}>
+                {Math.round((report.honestyRatio || 0) * 100)}% focused of time actually spent
+              </Text>
+              <Text style={styles.wideSub}>
+                Sessions logged: {report.sessionCount}
+              </Text>
             </View>
 
             <Text style={styles.sectionHeader}>DAILY BREAKDOWN</Text>
@@ -447,10 +498,10 @@ export default function WeeklyReportModal({ visible, onClose }) {
             </View>
 
             <View style={styles.noteBox}>
-              <Text style={styles.noteTitle}>What this means</Text>
+              <Text style={styles.noteTitle}>How this % is calculated</Text>
               <Text style={styles.noteText}>
-                Aurora Room doesn't judge perfect productivity. It tracks honesty —
-                how studying felt, where attention went, and whether your sky recovered.
+                Plan Completion = Actual Focused Minutes ÷ Planned Target Minutes.{'\n'}
+                Example: 1 focused min out of a 25-min target = 4%, not 100%.
               </Text>
             </View>
 
@@ -501,11 +552,11 @@ const styles = StyleSheet.create({
   dialCard: {
     backgroundColor: UI_COLORS.surface, borderRadius: 20,
     borderWidth: 1, borderColor: UI_COLORS.border,
-    padding: 20, alignItems: 'center', marginBottom: 18,
+    padding: 20, alignItems: 'center', marginBottom: 14,
   },
   dialWrap: {
     width: DIAL_SIZE, height: DIAL_SIZE,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
   },
   dialCenter: {
     position: 'absolute', alignItems: 'center', justifyContent: 'center',
@@ -514,6 +565,9 @@ const styles = StyleSheet.create({
   dialLabel: {
     color: UI_COLORS.textDim, fontSize: 11, fontWeight: '700',
     letterSpacing: 2, marginTop: 2,
+  },
+  formulaText: {
+    color: UI_COLORS.textDim, fontSize: 12, marginBottom: 14, textAlign: 'center',
   },
   dialStats: {
     flexDirection: 'row', alignItems: 'center', width: '100%',
@@ -532,7 +586,7 @@ const styles = StyleSheet.create({
   },
   chartWrap: { alignItems: 'center' },
   legendRow: {
-    flexDirection: 'row', gap: 18, marginTop: 10,
+    flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center',
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
@@ -541,10 +595,10 @@ const styles = StyleSheet.create({
   wideCard: {
     backgroundColor: UI_COLORS.surface, borderRadius: 16,
     borderWidth: 1, borderColor: UI_COLORS.border,
-    padding: 14, marginBottom: 18,
+    padding: 14, marginBottom: 14,
   },
   wideLabel: { color: UI_COLORS.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 6 },
-  wideValue: { color: UI_COLORS.text, fontSize: 17, fontWeight: '700' },
+  wideValue: { color: UI_COLORS.text, fontSize: 16, fontWeight: '700' },
   wideSub: { color: '#ffaa00', fontSize: 12, marginTop: 4 },
 
   statGrid: {

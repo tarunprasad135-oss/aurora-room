@@ -95,10 +95,10 @@ export default function SettingsModal({ visible, onClose }) {
     : 'Critical pull';
 
   const getPalettePrice = (p) => {
-    if (!p) return '$0.99';
+    if (!p) return '$0.99 / mo';
     if (p.isFree) return 'FREE';
     if (isPremium || (isPaletteUnlocked && isPaletteUnlocked(p.id))) return 'OWNED';
-    return '$0.99';
+    return '$0.99 / mo';
   };
 
   const safePalettesList = Array.isArray(Object.values(PALETTES || {})) ? Object.values(PALETTES || {}) : [];
@@ -116,6 +116,7 @@ export default function SettingsModal({ visible, onClose }) {
             </View>
 
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+              {/* Account Status */}
               <View style={styles.statusCard}>
                 <View style={styles.statusRow}>
                   <View style={{ flex: 1 }}>
@@ -151,6 +152,7 @@ export default function SettingsModal({ visible, onClose }) {
                 </View>
               </View>
 
+              {/* Weekly Report */}
               <TouchableOpacity style={styles.reportButton} onPress={() => setShowReport(true)} activeOpacity={0.85}>
                 <LinearGradient
                   colors={['rgba(123,47,247,0.95)', 'rgba(0,212,170,0.85)']}
@@ -163,9 +165,10 @@ export default function SettingsModal({ visible, onClose }) {
                 </LinearGradient>
               </TouchableOpacity>
 
+              {/* PALETTES */}
               <Text style={styles.sectionHeader}>AURORA COLOR PALETTES</Text>
               <Text style={styles.sectionSub}>
-                Changes glowing sky wave colors for every stress level. Free · $0.99 each · or all with Pro.
+                Changes glowing sky wave colors. Free · $0.99/mo each · or ALL themes with Pro ($2.99/mo).
               </Text>
               <View style={styles.paletteGrid}>
                 {safePalettesList.map((p) => {
@@ -207,14 +210,16 @@ export default function SettingsModal({ visible, onClose }) {
                 })}
               </View>
 
+              {/* Pricing legend */}
               <View style={styles.legendCard}>
-                <Text style={styles.legendTitle}>STUDENT PRICING</Text>
-                <Text style={styles.legendLine}>• Midnight Cyan — Free</Text>
-                <Text style={styles.legendLine}>• Extra Sky Themes — $0.99 each</Text>
-                <Text style={styles.legendLine}>• 3 Free AI Assignment Scans</Text>
-                <Text style={styles.legendLine}>• Aurora Pro — Unlimited AI Scans & All Themes ($2.99/mo)</Text>
+                <Text style={styles.legendTitle}>STUDENT PRICING LOGIC</Text>
+                <Text style={styles.legendLine}>• Midnight Cyan Theme — Free</Text>
+                <Text style={styles.legendLine}>• Individual Sky Themes — $0.99 / month each</Text>
+                <Text style={styles.legendLine}>• 3 Free AI Assignment Scans per month</Text>
+                <Text style={styles.legendLine}>• Aurora Pro ($2.99/mo or $19.99/yr) — ALL 5 Themes + Unlimited AI Scans + Cram Tools</Text>
               </View>
 
+              {/* SECRET DEMO SANDBOX (Revealed by tapping footer 3x) */}
               {showDemoMenu && (
                 <View style={styles.demoBox}>
                   <Text style={styles.demoTitle}>🛠 DEMO & TESTING SANDBOX</Text>
@@ -253,6 +258,7 @@ export default function SettingsModal({ visible, onClose }) {
                 </View>
               )}
 
+              {/* Footer text — Tap 3 times to toggle secret demo menu */}
               <TouchableOpacity onPress={handleFooterTap} activeOpacity={0.9} style={styles.footerInfo}>
                 <Text style={styles.footerText}>Aurora Room v1.0.0</Text>
                 <Text style={styles.footerText}>Shipaton 2026 · Next Gen</Text>
